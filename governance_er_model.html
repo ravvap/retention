@@ -1,0 +1,160 @@
+
+<style>
+body { margin: 0; padding: 0; }
+#erd { padding: 16px 0; }
+#erd svg { width: 100%; height: auto; }
+</style>
+<div id="erd"></div>
+<script type="module">
+import mermaid from 'https://esm.sh/mermaid@11/dist/mermaid.esm.min.mjs';
+const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+await document.fonts.ready;
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  fontFamily: '"Anthropic Sans", sans-serif',
+  themeVariables: {
+    darkMode: dark,
+    fontSize: '13px',
+    fontFamily: '"Anthropic Sans", sans-serif',
+    primaryColor: dark ? '#2a2860' : '#EEEDFE',
+    primaryTextColor: dark ? '#CECBF6' : '#3C3489',
+    primaryBorderColor: dark ? '#534AB7' : '#534AB7',
+    lineColor: dark ? '#9c9a92' : '#73726c',
+    secondaryColor: dark ? '#0a4030' : '#E1F5EE',
+    tertiaryColor: dark ? '#3d1a10' : '#FAECE7',
+    textColor: dark ? '#c2c0b6' : '#3d3d3a',
+    attributeBackgroundColorEven: dark ? '#1e1d1b' : '#F9F8F4',
+    attributeBackgroundColorOdd:  dark ? '#28271f' : '#F1EFE8',
+  },
+  er: { diagramPadding: 24, layoutDirection: 'TB', minEntityWidth: 120, minEntityHeight: 40, entityPadding: 16, useMaxWidth: true }
+});
+
+const diagram = `erDiagram
+  RETENTION_POLICY {
+    uuid id PK
+    varchar name
+    text description
+    varchar content_classification
+    enum content_type
+    enum clock_start_trigger
+    enum disposition_action
+    int archive_period_value
+    enum archive_period_unit
+    int purge_period_value
+    enum purge_period_unit
+    enum status
+    varchar created_by
+    timestamptz created_at
+    varchar activated_by
+    timestamptz activated_at
+    varchar retired_by
+    timestamptz retired_at
+  }
+
+  GOVERNED_ITEM {
+    uuid id PK
+    enum item_type
+    varchar document_reference
+    varchar db_table_name
+    jsonb db_record_key
+    varchar source_system
+    varchar business_content_class
+    uuid retention_policy_id FK
+    date retention_start_date
+    date archive_eligibility_date
+    date purge_eligibility_date
+    enum governance_status
+    int active_hold_count
+    varchar registered_by
+    timestamptz registered_at
+  }
+
+  GOVERNED_ITEM_EVENT {
+    uuid id PK
+    uuid governed_item_id FK
+    varchar event_type
+    date event_date
+    varchar recorded_by
+    timestamptz recorded_at
+  }
+
+  LEGAL_HOLD {
+    uuid id PK
+    varchar name
+    varchar matter_reference
+    text reason
+    enum status
+    varchar created_by
+    timestamptz created_at
+    varchar released_by
+    timestamptz released_at
+  }
+
+  LEGAL_HOLD_ITEM {
+    uuid id PK
+    uuid legal_hold_id FK
+    uuid governed_item_id FK
+    enum status
+    varchar applied_by
+    timestamptz applied_at
+    varchar released_by
+    timestamptz released_at
+  }
+
+  AUDIT_EVENT {
+    bigserial id PK
+    enum action
+    enum record_type
+    uuid record_id
+    varchar performed_by
+    timestamptz performed_at
+    jsonb context
+  }
+
+  BATCH_DISPOSITION_RUN {
+    uuid id PK
+    timestamptz run_at
+    int items_evaluated
+    int items_archived
+    int items_purged
+    int items_skipped
+    int items_error
+    timestamptz completed_at
+    text summary
+  }
+
+  RETENTION_POLICY ||--o{ GOVERNED_ITEM : "governs"
+  GOVERNED_ITEM ||--o{ GOVERNED_ITEM_EVENT : "triggers clock via"
+  GOVERNED_ITEM ||--o{ LEGAL_HOLD_ITEM : "protected by"
+  LEGAL_HOLD ||--o{ LEGAL_HOLD_ITEM : "links to"
+  GOVERNED_ITEM }o--o{ LEGAL_HOLD : "held under"
+`;
+
+const { svg } = await mermaid.render('erd-svg', diagram);
+document.getElementById('erd').innerHTML = svg;
+
+document.querySelectorAll('#erd .node').forEach(node => {
+  const firstPath = node.querySelector('path[d]');
+  if (!firstPath) return;
+  const d = firstPath.getAttribute('d');
+  const nums = d.match(/-?[\d.]+/g)?.map(Number);
+  if (!nums || nums.length < 8) return;
+  const xs = [nums[0], nums[2], nums[4], nums[6]];
+  const ys = [nums[1], nums[3], nums[5], nums[7]];
+  const x = Math.min(...xs), y = Math.min(...ys);
+  const w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+  const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  rect.setAttribute('x', x); rect.setAttribute('y', y);
+  rect.setAttribute('width', w); rect.setAttribute('height', h);
+  rect.setAttribute('rx', '8');
+  for (const a of ['fill', 'stroke', 'stroke-width', 'class', 'style']) {
+    if (firstPath.hasAttribute(a)) rect.setAttribute(a, firstPath.getAttribute(a));
+  }
+  firstPath.replaceWith(rect);
+});
+
+document.querySelectorAll('#erd .row-rect-odd path, #erd .row-rect-even path').forEach(p => {
+  p.setAttribute('stroke', 'none');
+});
+</script>

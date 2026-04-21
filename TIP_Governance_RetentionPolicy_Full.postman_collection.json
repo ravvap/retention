@@ -1,0 +1,805 @@
+{
+  "info": {
+    "name": "TIP Governance — Retention Policy (Full)",
+    "_postman_id": "tip-gov-retention-policy-full-v2",
+    "description": "Full test collection for Retention Policy Management:\n\n- GOV-001: Create\n- GOV-002: Activate\n- GOV-003: Retire\n- GOV-004: View + List\n- Edit (Draft only)\n- Delete (Draft only, TIP_ADMIN only)\n\nCONTROLLED // FDIC INTERNAL ONLY\n\nRun order: start with '0. Auth Setup' to populate tokens, then run folders in sequence. The pre-request scripts in some tests automatically set up required state (e.g. creating a fresh Draft policy before testing edit/delete).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+
+  "variable": [
+    { "key": "baseUrl",         "value": "http://localhost:8080", "type": "string" },
+    { "key": "token",           "value": "",                      "type": "string" },
+    { "key": "analystToken",    "value": "",                      "type": "string" },
+    { "key": "auditorToken",    "value": "",                      "type": "string" },
+    { "key": "policyId",        "value": "",                      "type": "string" },
+    { "key": "draftPolicyId",   "value": "",                      "type": "string" },
+    { "key": "retiredPolicyId", "value": "",                      "type": "string" },
+    { "key": "deletePolicyId",  "value": "",                      "type": "string" }
+  ],
+
+  "item": [
+
+    {
+      "name": "0. Auth Setup",
+      "item": [
+        {
+          "name": "Login as Admin → save token",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Token present', () => pm.expect(body.token).to.be.a('string').and.not.empty);",
+              "pm.collectionVariables.set('token', body.token);",
+              "pm.test('Has TIP_ADMIN role', () => pm.expect(body.roles).to.include('ROLE_TIP_ADMIN'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": { "mode": "raw", "raw": "{\"username\":\"admin\",\"password\":\"admin123\"}" }
+          }
+        },
+        {
+          "name": "Login as SR Analyst → save analystToken",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.collectionVariables.set('analystToken', pm.response.json().token);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": { "mode": "raw", "raw": "{\"username\":\"analyst\",\"password\":\"analyst123\"}" }
+          }
+        },
+        {
+          "name": "Login as Auditor → save auditorToken",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.collectionVariables.set('auditorToken', pm.response.json().token);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": { "mode": "raw", "raw": "{\"username\":\"auditor\",\"password\":\"audit123\"}" }
+          }
+        },
+        {
+          "name": "Login — wrong password → 401",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": { "mode": "raw", "raw": "{\"username\":\"admin\",\"password\":\"wrong\"}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "GOV-001 — Create",
+      "item": [
+        {
+          "name": "AC1 — ArchiveThenPurge → 201 Draft",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "const b = pm.response.json();",
+              "pm.test('Save policyId', () => {",
+              "    pm.expect(b.id).to.match(/^[0-9a-f-]{36}$/i);",
+              "    pm.collectionVariables.set('policyId', b.id);",
+              "});",
+              "pm.test('Status is Draft', () => pm.expect(b.status).to.eql('Draft'));",
+              "pm.test('Name matches', () => pm.expect(b.name).to.eql('Standard Case File Retention'));",
+              "pm.test('ContentType is Document', () => pm.expect(b.contentType).to.eql('Document'));",
+              "pm.test('DispositionAction is ArchiveThenPurge', () => pm.expect(b.dispositionAction).to.eql('ArchiveThenPurge'));",
+              "pm.test('Archive period 3 Years', () => { pm.expect(b.archivePeriodValue).to.eql(3); pm.expect(b.archivePeriodUnit).to.eql('Years'); });",
+              "pm.test('Purge period 7 Years', () => { pm.expect(b.purgePeriodValue).to.eql(7); pm.expect(b.purgePeriodUnit).to.eql('Years'); });",
+              "pm.test('createdAt is set', () => pm.expect(b.createdAt).to.be.a('string').and.not.empty);",
+              "pm.test('activatedAt is null', () => pm.expect(b.activatedAt).to.be.null);",
+              "pm.test('retiredAt is null', () => pm.expect(b.retiredAt).to.be.null);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Standard Case File Retention\",\n  \"description\": \"FDIC case file: archive after 3yr, purge after 7yr.\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"ArchiveThenPurge\",\n  \"archivePeriodValue\": 3,\n  \"archivePeriodUnit\": \"Years\",\n  \"purgePeriodValue\": 7,\n  \"purgePeriodUnit\": \"Years\",\n  \"contentClassification\": \"CaseFile\"\n}" }
+          }
+        },
+        {
+          "name": "AC1 — PurgeOnly → 201, archive fields null",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "const b = pm.response.json();",
+              "pm.collectionVariables.set('draftPolicyId', b.id);",
+              "pm.test('DispositionAction is PurgeOnly', () => pm.expect(b.dispositionAction).to.eql('PurgeOnly'));",
+              "pm.test('Archive period fields null', () => { pm.expect(b.archivePeriodValue).to.be.null; pm.expect(b.archivePeriodUnit).to.be.null; });"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Transactional Data Purge\",\n  \"contentType\": \"DatabaseRecord\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 5,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC1 — ArchiveOnly → 201, purge fields null",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "const b = pm.response.json();",
+              "pm.test('Purge period fields null', () => { pm.expect(b.purgePeriodValue).to.be.null; pm.expect(b.purgePeriodUnit).to.be.null; });"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Long-Term Archive Only\",\n  \"contentType\": \"Any\",\n  \"clockStartTrigger\": \"EventDate\",\n  \"dispositionAction\": \"ArchiveOnly\",\n  \"archivePeriodValue\": 2,\n  \"archivePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC3 — Blank name → 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 5,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC4 — Missing contentType → 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Content Type\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC5 — Missing dispositionAction → 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Disposition\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\"\n}" }
+          }
+        },
+        {
+          "name": "AC6 — ArchiveThenPurge without archive period → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error mentions archive', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('archive'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Missing Archive Period\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"ArchiveThenPurge\",\n  \"purgePeriodValue\": 7,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC6 — Archive value supplied without unit → 422",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 422', () => pm.response.to.have.status(422));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Archive Value No Unit\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"ArchiveThenPurge\",\n  \"archivePeriodValue\": 3,\n  \"purgePeriodValue\": 7,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC7 — PurgeOnly without purge period → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error mentions purge', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('purge'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Missing Purge Period\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\"\n}" }
+          }
+        },
+        {
+          "name": "Security — No token → 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Unauthenticated\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "Security — SR Analyst cannot create → 403",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{analystToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Analyst Forbidden\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "GOV-002 — Activate",
+      "item": [
+        {
+          "name": "AC1 — Activate Draft → 200 Active",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Status is Active', () => pm.expect(pm.response.json().status).to.eql('Active'));",
+              "pm.test('activatedAt is set', () => pm.expect(pm.response.json().activatedAt).to.be.a('string').and.not.empty);",
+              "pm.test('id unchanged', () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('policyId')));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/activate"
+          }
+        },
+        {
+          "name": "AC4 — Activate already-Active → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error says already active', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('already active'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/activate"
+          }
+        },
+        {
+          "name": "AC5 — Activate Retired policy → 422",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": [
+                "const base = pm.collectionVariables.get('baseUrl');",
+                "const tok  = pm.collectionVariables.get('token');",
+                "const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + tok };",
+                "pm.sendRequest({ url: base+'/api/v1/retention-policies', method:'POST', header: headers,",
+                "  body:{ mode:'raw', raw: JSON.stringify({ name:'Retire Test '+Date.now(), contentType:'Document',",
+                "    clockStartTrigger:'CreationDate', dispositionAction:'PurgeOnly', purgePeriodValue:3, purgePeriodUnit:'Years' })}",
+                "}, (e,r) => {",
+                "  const id = r.json().id;",
+                "  pm.collectionVariables.set('retiredPolicyId', id);",
+                "  pm.sendRequest({ url: base+'/api/v1/retention-policies/'+id+'/activate', method:'POST', header: headers }, (e2,r2) => {",
+                "    pm.sendRequest({ url: base+'/api/v1/retention-policies/'+id+'/retire', method:'POST', header: headers }, ()=>{});",
+                "  });",
+                "});"
+              ]}
+            },
+            {
+              "listen": "test",
+              "script": { "exec": [
+                "pm.test('Status 422', () => pm.response.to.have.status(422));",
+                "pm.test('Error says retired', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('retired'));"
+              ]}
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{retiredPolicyId}}/activate"
+          }
+        },
+        {
+          "name": "AC6 — Non-existent id → 404",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/00000000-0000-0000-0000-000000000000/activate"
+          }
+        },
+        {
+          "name": "Security — SR Analyst cannot activate → 403",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{analystToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/activate"
+          }
+        },
+        {
+          "name": "Security — No token → 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/activate"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "GOV-003 — Retire",
+      "item": [
+        {
+          "name": "AC1 — Retire Active policy → 200 Retired",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Status is Retired', () => pm.expect(pm.response.json().status).to.eql('Retired'));",
+              "pm.test('retiredAt is set', () => pm.expect(pm.response.json().retiredAt).to.be.a('string').and.not.empty);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/retire"
+          }
+        },
+        {
+          "name": "AC2 — Retire already-Retired policy → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error says already retired', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('already retired'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/retire"
+          }
+        },
+        {
+          "name": "AC1 — Retire Draft policy → 422 (was never active)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error mentions Draft', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{draftPolicyId}}/retire"
+          }
+        },
+        {
+          "name": "AC3 — Non-existent id → 404",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/00000000-0000-0000-0000-000000000000/retire"
+          }
+        },
+        {
+          "name": "AC4 — Retired policy visible for audit — governs nothing new",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Retired policy still readable', () => pm.expect(pm.response.json().status).to.eql('Retired'));",
+              "pm.test('Audit shows retiredAt', () => pm.expect(pm.response.json().retiredAt).to.be.a('string').and.not.empty);"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}"
+          }
+        },
+        {
+          "name": "Security — SR Analyst cannot retire → 403",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{analystToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/retire"
+          }
+        },
+        {
+          "name": "Security — No token → 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}}],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}/retire"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "GOV-004 — View and List",
+      "item": [
+        {
+          "name": "AC1 — Get by id → 200 all fields",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('All fields present', () => {",
+              "    ['id','name','status','contentType','clockStartTrigger','dispositionAction',",
+              "     'createdAt','createdBy','archivePeriodValue','archivePeriodUnit',",
+              "     'purgePeriodValue','purgePeriodUnit','activatedAt','retiredAt',",
+              "     'description','contentClassification'].forEach(f => pm.expect(b).to.have.property(f));",
+              "});",
+              "pm.test('Id matches', () => pm.expect(b.id).to.eql(pm.collectionVariables.get('policyId')));",
+              "pm.test('View does not mutate state', () => pm.expect(b.retiredAt).to.be.a('string'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}"
+          }
+        },
+        {
+          "name": "AC1 — SR Analyst can view → 200",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{analystToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}"
+          }
+        },
+        {
+          "name": "List all → 200 array contains created policy",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "pm.test('Response is array', () => pm.expect(pm.response.json()).to.be.an('array'));",
+              "pm.test('Contains our policy', () => {",
+              "    const ids = pm.response.json().map(p => p.id);",
+              "    pm.expect(ids).to.include(pm.collectionVariables.get('policyId'));",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies"
+          }
+        },
+        {
+          "name": "AC4 — View does not produce audit entry",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const events = pm.response.json();",
+              "pm.test('No PolicyViewed action in audit trail', () => {",
+              "    pm.expect(events.some(e => e.action === 'PolicyViewed')).to.be.false;",
+              "});",
+              "pm.test('PolicyCreated and PolicyActivated are present', () => {",
+              "    const actions = events.map(e => e.action);",
+              "    pm.expect(actions).to.include('PolicyCreated');",
+              "    pm.expect(actions).to.include('PolicyActivated');",
+              "});",
+              "pm.test('Entries in chronological order', () => {",
+              "    for (let i=1; i<events.length; i++)",
+              "        pm.expect(new Date(events[i].performedAt)).to.be.at.least(new Date(events[i-1].performedAt));",
+              "});"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/audit?recordType=RetentionPolicy&recordId={{policyId}}",
+              "host": ["{{baseUrl}}"], "path": ["api","v1","audit"],
+              "query": [{ "key": "recordType", "value": "RetentionPolicy" }, { "key": "recordId", "value": "{{policyId}}" }]
+            }
+          }
+        },
+        {
+          "name": "AC3 — Non-existent id → 404",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 404', () => pm.response.to.have.status(404));",
+              "pm.test('Error mentions not found', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('could not be found'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "name": "Security — Auditor cannot view → 403",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"]}}],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{auditorToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}"
+          }
+        },
+        {
+          "name": "Security — No token → 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}}],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Edit — Update Draft Policy",
+      "item": [
+        {
+          "name": "Setup — Create fresh Draft for edit tests",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('editPolicyId', pm.response.json().id);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Draft Policy For Edit\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC — Update Draft policy → 200 updated fields",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "const b = pm.response.json();",
+              "pm.test('Name updated', () => pm.expect(b.name).to.eql('Updated Policy Name'));",
+              "pm.test('Description updated', () => pm.expect(b.description).to.eql('Updated description for edit test.'));",
+              "pm.test('Purge period updated to 10 Years', () => { pm.expect(b.purgePeriodValue).to.eql(10); pm.expect(b.purgePeriodUnit).to.eql('Years'); });",
+              "pm.test('Status still Draft after edit', () => pm.expect(b.status).to.eql('Draft'));",
+              "pm.test('id unchanged', () => pm.expect(b.id).to.eql(pm.collectionVariables.get('editPolicyId')));"
+            ]}
+          }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{editPolicyId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Policy Name\",\n  \"description\": \"Updated description for edit test.\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 10,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC — Update validation — blank name → 400",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));"]}}],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{editPolicyId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 5,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC — Cannot edit Active policy → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error mentions Draft only', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Attempted Edit On Active\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 5,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC — Cannot edit Retired policy → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error mentions immutable', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{retiredPolicyId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Attempted Edit On Retired\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 5,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC — Non-existent id → 404",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));"]}}],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/00000000-0000-0000-0000-000000000000",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Ghost Policy\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 5,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "Security — SR Analyst cannot edit → 403",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"]}}],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{analystToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{editPolicyId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Analyst Edit Attempt\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "Security — No token → 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}}],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{editPolicyId}}",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Token Edit\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Delete — Remove Draft Policy",
+      "item": [
+        {
+          "name": "Setup — Create fresh Draft for delete test",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 201', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('deletePolicyId', pm.response.json().id);"
+            ]}
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies",
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Draft Policy For Delete\",\n  \"contentType\": \"Document\",\n  \"clockStartTrigger\": \"CreationDate\",\n  \"dispositionAction\": \"PurgeOnly\",\n  \"purgePeriodValue\": 3,\n  \"purgePeriodUnit\": \"Years\"\n}" }
+          }
+        },
+        {
+          "name": "AC — Cannot delete Active policy → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error says only Draft', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{policyId}}"
+          }
+        },
+        {
+          "name": "AC — Cannot delete Retired policy → 422",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 422', () => pm.response.to.have.status(422));",
+              "pm.test('Error says only Draft', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('draft'));"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{retiredPolicyId}}"
+          }
+        },
+        {
+          "name": "Security — Manager cannot delete → 403 (TIP_ADMIN only)",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));"]}}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{analystToken}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{deletePolicyId}}"
+          }
+        },
+        {
+          "name": "AC — Delete Draft policy → 204 No Content",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 204', () => pm.response.to.have.status(204));",
+              "pm.test('Response body is empty', () => pm.expect(pm.response.text()).to.be.empty);"
+            ]}
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{deletePolicyId}}"
+          }
+        },
+        {
+          "name": "AC — Deleted policy no longer found → 404",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": [
+              "pm.test('Status 404', () => pm.response.to.have.status(404));",
+              "pm.test('Policy is gone', () => pm.expect(pm.response.json().detail.toLowerCase()).to.include('could not be found'));"
+            ]}
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{deletePolicyId}}"
+          }
+        },
+        {
+          "name": "AC — Delete non-existent id → 404",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));"]}}],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}/api/v1/retention-policies/00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "name": "Security — No token → 401",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"]}}],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/retention-policies/{{deletePolicyId}}"
+          }
+        }
+      ]
+    }
+
+  ]
+}

@@ -1,0 +1,96 @@
+erDiagram
+    gov_retention_policy ||--o{ gov_governed_item : "defines rules for"
+    gov_governed_item ||--o{ gov_governed_item_event : "triggers"
+    gov_governed_item ||--o{ gov_legal_hold_item : "subject to"
+    gov_legal_hold ||--o{ gov_legal_hold_item : "contains"
+    gov_governed_item ||--o{ gov_error_log : "reports"
+    gov_batch_disposition_run ||--o{ gov_error_log : "logs failures"
+
+    gov_retention_policy {
+        uuid id PK
+        string name
+        gov_policy_status status
+        string activated_by
+        timestamptz activated_at
+        string retired_by
+        timestamptz retired_at
+        timestamptz created_at
+        string created_by
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    gov_governed_item {
+        uuid id PK
+        gov_item_type item_type
+        string source_system
+        uuid retention_policy_id FK
+        date retention_start_date
+        date archive_eligibility_date
+        date purge_eligibility_date
+        gov_governance_status governance_status
+        int active_hold_count
+        timestamptz created_at
+        string created_by
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    gov_governed_item_event {
+        uuid id PK
+        uuid governed_item_id FK
+        string event_type
+        date event_date
+        timestamptz created_at
+        string created_by
+    }
+
+    gov_legal_hold {
+        uuid id PK
+        string name
+        gov_hold_status status
+        string released_by
+        timestamptz released_at
+        timestamptz created_at
+        string created_by
+        timestamptz updated_at
+        timestamptz deleted_at
+    }
+
+    gov_legal_hold_item {
+        uuid id PK
+        uuid legal_hold_id FK
+        uuid governed_item_id FK
+        gov_hold_status status
+        timestamptz created_at
+        string created_by
+    }
+
+    gov_batch_disposition_run {
+        uuid id PK
+        timestamptz run_at
+        int items_evaluated
+        int items_archived
+        int items_purged
+        timestamptz completed_at
+        timestamptz created_at
+        string created_by
+    }
+
+    gov_error_log {
+        uuid id PK
+        uuid governed_item_id FK
+        uuid batch_run_id FK
+        text error_message
+        timestamptz occurred_at
+    }
+
+    gov_audit_event {
+        bigserial id PK
+        gov_audit_action action
+        gov_audit_record_type record_type
+        uuid record_id
+        string performed_by
+        timestamptz performed_at
+        jsonb context
+    }

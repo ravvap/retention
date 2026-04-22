@@ -320,6 +320,20 @@ public final class ApplicationConstants {
         public static final String PURGE_PERIOD_UNIT_REQUIRED =
                 "Purge period unit is required when value is supplied.";
 
+        // GOV-020 Edit
+        public static final String EDIT_ACTIVE_POLICY =
+                "Only Draft policies can be edited; to change the rules of an Active policy, " +
+                "you must create a new policy.";
+        public static final String EDIT_RETIRED_POLICY =
+                "Retired policies are preserved for audit purposes and cannot be modified.";
+
+        // GOV-021 Delete
+        public static final String DELETE_ACTIVE_POLICY =
+                "Only Draft policies can be deleted. An Active policy must be retired instead, " +
+                "so that its history and the governance record of items still assigned to it are preserved.";
+        public static final String DELETE_RETIRED_POLICY =
+                "Retired policies are preserved for audit purposes and cannot be deleted.";
+
         // Governed item
         public static final String ITEM_ON_HOLD_ARCHIVE =
                 "Item is under active legal hold. Archive action abandoned.";
